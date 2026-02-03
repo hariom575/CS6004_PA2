@@ -1,0 +1,133 @@
+object  oriented language such as java frequently perform field access withing loops, conditional branches, and method invocation. In many programs, the same field is loaded repeatedly even though its value remains unchanged between successive accesses. These redundant field loads lead to unneccessary memory operations and degrade runtime performance by cluttering the intermediate representation with repetitive instructions. From the perspective of static analysis, redunadant loadfs also reduce analysis precision by introducing extra dependencies is therefore beneficial both for optimization and for improving the clearity and effecctiveness of program analysiThis assignment
+focuses on improving field access precision by identifying and listing redundant field loads and its possible replacement using static analysis
+Detailed specification: 
+at every program point we want to know : which object fields have already been loaded, and are still valid sp that a later load is redundant?
+so when we see a statement x =  o.f we can decide it is a redundant if: 
+1) the same (o, f ) has been loaded into x earlier on all paths, and
+2) there has been no write to o.f since that load
+The objective of this assignment is to implement and perform:
+1) Intraprocedural points-to-point analysis. You must compute flow and field sesetive intraprocedural points to information for each method.
+2) Since the analysis is intraprocedural, you may assumne conservative results at all the sites,
+3) You can assume single threaded execution no parallel code excution occures.
+4) What to print? Using the generated points to information, identify the source code line numbers where one or more load operations are redundant can be replaced by method and sorted in lexicographical order, printing the class and method name only if at least one redundant load exists.
+  i) You can use getJavaSourceStartLineNumboer() method to obtain the line number of a Unit corresponding to the source program.
+  ii) For a given line, if multiple outputs exist, print each output sapately
+  iii) You can ignore the results for constructors and libraries while printing the final result.
+  iv) You should print method name class name only if there is atleast one redundant load. 
+  
+
+  Sample input program: 
+  class Node{
+    Node f1;
+    Node f2;
+    Node g;
+    Node(){}
+  }
+public class Test{
+    public static void main(String[] args){
+        Node a = new Node();  /// O10
+        a.f1 = new Node();     // O11
+        Node b = new Node();   // O12
+        b.f1 = new Node(); /// O13
+        a.f2 = new Node();  // O14
+        Node c = a.f1;
+        a.f2 = a.f1;   // redundant 
+        b.f1 = a.f2;   // redundant
+    }
+}
+public class Test{
+    int f1;
+    public static void main(String[] args){
+        Test o1 = new Test();
+        a.f1 = 10;
+        int b = a.f1;
+        int c = a.f1;
+        a.foo();
+        int d = a.f1;
+    }
+    void foo(){
+        Test o1 = new Test() // O12
+        int x;
+        o1.f1 = 20;
+        Test o2 = o1;
+        x = o1.f1;
+        int y = o2.f1; // redundant
+    }
+}
+
+Generated Jimple
+Testcase 1: 
+public static void main(java.lang.String[]){
+    Node $r0, $r1, $r2, $r3, $r4, $r5, $r6, $r7;
+    java.lang.String[] r8;
+    r8:=@parameter0: java.lang.String[];
+    $r0 = new Node;
+    specialinvoke $r0.<Node: void <init>()>();
+    $r1 = new Node;
+    specialinvode $r1.<Node: void <init>()>();
+    $r0.<Node: Node f1> = $r1;
+    $r2 = new Node;
+    specialinvoke $r2.<Node : void <init>()>();
+    $r3 = new Node;
+    specialinvoke $r3.<Node: void <init>()>();
+    $r2.<Node: Node f1> = $r3;
+    $r4 = new Node;
+    specialinvoke $r4.<Node: void <init>()>();
+    $r0.<Node: Node f2> = $r4;
+    r5 = $r0.<Node: Node f1>;
+    $r6 = $ro.<Node : Node f1>;
+    $ro.<Node: Node f2> = $r6;
+    $r7 = $ro.<Node: Node f2>;
+    $r2.<Node: Node f1> = $r7
+    return ;
+}
+
+Testcase 2 :
+public static void main(java.lang.String[]){
+    Test $r0;
+    int i0,i1,i2;
+    java.lang.String[] r1;
+    r1: = @parameter0: java.lang.String[];
+    $r0 = new Test;
+    specialinvoke $r0.<Test: void <init>()>();
+    $r0.<Testt: int f1>;
+    i0 = $0.<Test: int f1>;
+    i1 = $r0.<Test int f1>;
+    vitrualinvoke $r0 .<Test: void foo()>();
+    i2 = $r0.<Test: int f1>;
+    return;
+}
+void foo(boolen){
+    Test $r0,$r1;
+    int i0,i1;
+    boolean z0;
+    r1:= @this: Test;
+    z0:= @parameter0 boolen;
+    $r0 = new Test;
+    specialinvoke $r0.<Test: void <init>()>();
+    $r0.<Test: int f1> = 20;
+    i0 =$r0.<Test: int f1>;
+    i1 = $r0.<Test: int f1>;
+    return;
+}
+
+expected output:
+Test : main
+16 $r0.<Node: Node f1> r5;
+17 $r0.<Node: Node f2> r5;
+
+Test: foo
+17: $ro.<Test: int f1> i0;
+Test: main
+7: $r0.<Test: int f1> i0;
+Output format: SourceCode_LineNumber: LoadStatement_in_jimple jimple_var_name
+
+
+4) running the started code:
+1) compile test cases:
+javac Test.java
+2) compile analysis:
+javac -cp .:soot-6.6.0-jar-with-dependencies.java PA2.java
+3) Run(Note - Pass Testcase folder name [Test1 or Test2] as argmunent) 
+java -cp .:soot-4.6.0-jar-with-dependencies.jar PA2 Test1;
+
