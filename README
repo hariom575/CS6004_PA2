@@ -74,10 +74,10 @@ public static void main(java.lang.String[]){
     $r4 = new Node;
     specialinvoke $r4.<Node: void <init>()>();
     $r0.<Node: Node f2> = $r4;
-    r5 = $r0.<Node: Node f1>;
+    $r5 = $r0.<Node: Node f1>;
     $r6 = $ro.<Node : Node f1>;
-    $ro.<Node: Node f2> = $r6;
-    $r7 = $ro.<Node: Node f2>;
+    $r0.<Node: Node f2> = $r6;
+    $r7 = $r0.<Node: Node f2>;
     $r2.<Node: Node f1> = $r7
     return ;
 }
