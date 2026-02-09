@@ -2,14 +2,14 @@ import soot.*;
 import soot.options.Options;
 public class PA2{
     public static void main(String [] arg){
-        String classPath = "./testcases/" + args[0];
+        String classPath = "./testcases/" + arg[0];
         String [] sootArgs = {
             "-cp", classPath,
             "-pp",
             "-f", "J",
             "-main-class", "Test",
-            "-process-dir", classPath;
-        }
+            "-process-dir", classPath
+        };
         AnalysisTransformer analysisTransformer = new AnalysisTransformer();
         PackManager.v().getPack("jtp").add(new Transform("jtp.dfa",analysisTransformer));
         Options.v().set_keep_line_number(true);
