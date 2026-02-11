@@ -11,7 +11,7 @@ public class Test{
         Node b = new Node();
         b.f1 = new Node();
         a.f2 = new Node();
-        Node c = a1.f1;
+        Node c = a.f1;
         a.f2 = a.f1;
         b.f1 = a.f2;
      }
