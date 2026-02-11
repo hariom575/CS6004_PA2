@@ -181,7 +181,7 @@ public class PA2 {
         }
     }
     
-    // Helper class to store redundant load information
+    // Helper class t store redundant load inoformation
     static class RedundantLoadInfo implements Comparable<RedundantLoadInfo> {
         int lineNumber;
         String jimpleStmt;
@@ -257,6 +257,8 @@ class PointsToAnalysis extends ForwardFlowAnalysis<Unit, Map<Value, Set<String>>
             AssignStmt assign = (AssignStmt) stmt;
             Value left = assign.getLeftOp();
             Value right = assign.getRightOp();
+            System.out.println("Left: " + assign.getLeftOp());
+            System.out.println("Right: " + assign.getRightOp());
             
             if (right instanceof NewExpr) {
                 // x = new T() => x points to a new object
@@ -284,6 +286,12 @@ class PointsToAnalysis extends ForwardFlowAnalysis<Unit, Map<Value, Set<String>>
         
         // Store the points-to information for this unit
         unitToPointsTo.put(unit, new HashMap<>(out));
+        System.out.println("UNIT: " + unit);
+
+        for (Map.Entry<Value, Set<String>> entry : out.entrySet()) {
+            System.out.println("  " + entry.getKey() + " -> " + entry.getValue());
+        }
+        System.out.println("================================");
     }
     
     @Override
