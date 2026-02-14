@@ -1,13 +1,14 @@
 class Test {
     Test f1;
+    Test f2;
 
     public static void main(String[] args) {
         Test o = new Test();
 
         Test x = o.f1;
 
-        o.f1 = new Test();   // strong update
+        o.f2 = new Test();   // different field
 
-        Test y = o.f1;       // NOT redundant
+        Test y = o.f1;       // REDUNDANT
     }
 }

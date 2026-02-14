@@ -6,8 +6,8 @@ class Test {
 
         Test x = o.f1;
 
-        o.f1 = new Test();   // strong update
+        o = new Test();   // new object
 
-        Test y = o.f1;       // NOT redundant
+        Test y = o.f1;    // NOT redundant
     }
 }

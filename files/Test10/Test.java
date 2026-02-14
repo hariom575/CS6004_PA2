@@ -6,8 +6,10 @@ class Test {
 
         Test x = o.f1;
 
-        o.f1 = new Test();   // strong update
+        if (args.length > 0) {
+            o.f1 = new Test();
+        }
 
-        Test y = o.f1;       // NOT redundant
+        Test y = o.f1;   // NOT redundant
     }
 }

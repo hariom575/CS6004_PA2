@@ -489,28 +489,28 @@ class PointsToAnalysis extends ForwardFlowAnalysis<Unit, Map<Value, Set<String>>
     
     @Override
     protected void merge(Map<Value, Set<String>> in1,
-                        Map<Value, Set<String>> in2,
-                        Map<Value, Set<String>> out) {
+                            Map<Value, Set<String>> in2,
+                            Map<Value, Set<String>> out) {
 
-        out.clear();
+            out.clear();
 
-        // union of all variables
-        Set<Value> allVars = new HashSet<>();
-        allVars.addAll(in1.keySet());
-        allVars.addAll(in2.keySet());
+            Set<Value> allVars = new HashSet<>();
+            allVars.addAll(in1.keySet());
+            allVars.addAll(in2.keySet());
 
-        for (Value var : allVars) {
+            for (Value var : allVars) {
 
-            Set<String> set1 = in1.getOrDefault(var, Collections.emptySet());
-            Set<String> set2 = in2.getOrDefault(var, Collections.emptySet());
+                Set<String> set1 = in1.getOrDefault(var, Collections.emptySet());
+                Set<String> set2 = in2.getOrDefault(var, Collections.emptySet());
 
-            // INTERSECTION of object sets
-            Set<String> intersection = new HashSet<>(set1);
-            intersection.retainAll(set2);
+                // UNION for points-to
+                Set<String> union = new HashSet<>(set1);
+                union.addAll(set2);
 
-            out.put(var, intersection);
+                out.put(var, union);
+            }
         }
-    }
+
 
     
     @Override
@@ -564,6 +564,28 @@ class PointsToAnalysis extends ForwardFlowAnalysis<Unit, Map<Value, Set<String>>
 
         return result;
     }
+    public Set<String> getReachableObjects(Set<String> roots) {
+
+        Set<String> visited = new HashSet<>(roots);
+        Queue<String> worklist = new LinkedList<>(roots);
+
+        while (!worklist.isEmpty()) {
+            String obj = worklist.poll();
+
+            Map<String, Set<String>> fields = heap.get(obj);
+            if (fields == null) continue;
+
+            for (Set<String> targets : fields.values()) {
+                for (String t : targets) {
+                    if (visited.add(t))
+                        worklist.add(t);
+                }
+            }
+        }
+
+        return visited;
+    }
+
 
 }
 
@@ -625,22 +647,44 @@ class AvailableLoadsAnalysis extends ForwardFlowAnalysis<Unit, Set<PA2.FieldLoad
 
             InvokeExpr invoke = stmt.getInvokeExpr();
 
-            Set<Value> objectsToKill = new HashSet<>();
+            Set<Value> receiverObjs = new HashSet<>();
 
             // receiver
             if (invoke instanceof InstanceInvokeExpr) {
-                objectsToKill.add(
+                receiverObjs.add(
                     ((InstanceInvokeExpr) invoke).getBase()
                 );
             }
 
             // arguments
             for (Value arg : invoke.getArgs()) {
-                objectsToKill.add(arg);
+                receiverObjs.add(arg);
+            }
+            // Step 1: convert Value → abstract objects
+            Set<String> receiverHeapObjs = new HashSet<>();
+
+            for (Value v : receiverObjs) {
+                receiverHeapObjs.addAll(
+                    pointsTo.getPointsToSet(v, stmt)
+                );
             }
 
-            out.removeIf(load ->
-                    objectsToKill.contains(load.base));
+           
+            Set<String> reachable = pointsTo.getReachableObjects(receiverHeapObjs);
+            System.out.println("Call stmt: " + stmt);
+            System.out.println("Receiver heap objs: " + receiverHeapObjs);
+            System.out.println("Reachable: " + reachable);
+
+
+            out.removeIf(load -> {
+                       Set<String> objs =
+                       pointsTo.getPointsToSet(load.base,
+                       unit);
+                     System.out.println("Checking load: " + load); 
+                     System.out.println("Load resolves to: " + objs);
+                    return out.contains(new PA2.FieldLoad(load.base,load.field,null));
+            });
+
         }
 
     }
