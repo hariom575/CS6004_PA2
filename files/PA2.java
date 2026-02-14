@@ -81,104 +81,157 @@ public class PA2 {
         printResults(results);
     }
     
-    private static List<RedundantLoadInfo> analyzeMethod(SootMethod method) {
-        List<RedundantLoadInfo> redundantLoads = new ArrayList<>();
-        
-        Body body = method.getActiveBody();
-        UnitGraph graph = new BriefUnitGraph(body);
-        
-        // Perform points-to analysis
-        PointsToAnalysis pointsTo = new PointsToAnalysis(graph, body);
-        
-        // Perform available loads analysis
-        AvailableLoadsAnalysis availableLoads = new AvailableLoadsAnalysis(graph, pointsTo);
-        
-        // Track jimple statements for context
-        List<Unit> units = new ArrayList<>();
-        for (Unit u : body.getUnits()) {
-            units.add(u);
+   private static List<RedundantLoadInfo> analyzeMethod(SootMethod method) {
+
+    boolean DEBUG = true;
+
+    List<RedundantLoadInfo> redundantLoads = new ArrayList<>();
+
+    Body body = method.getActiveBody();
+    UnitGraph graph = new BriefUnitGraph(body);
+
+    if (DEBUG) {
+        System.out.println("\n===========================================");
+        System.out.println("Analyzing Method: " + method.getSignature());
+        System.out.println("===========================================\n");
+    }
+
+    // Perform points-to analysis
+    PointsToAnalysis pointsTo = new PointsToAnalysis(graph, body);
+
+    // Perform available loads analysis
+    AvailableLoadsAnalysis availableLoads =
+            new AvailableLoadsAnalysis(graph, pointsTo);
+
+    List<Unit> units = new ArrayList<>();
+    for (Unit u : body.getUnits()) {
+        units.add(u);
+    }
+
+    for (int i = 0; i < units.size(); i++) {
+
+        Unit unit = units.get(i);
+        Stmt stmt = (Stmt) unit;
+
+        if (DEBUG) {
+            System.out.println("------------------------------------------------");
+            System.out.println("UNIT: " + unit);
+            System.out.println("Line: " + stmt.getJavaSourceStartLineNumber());
         }
-        
-        // Check each unit for redundant loads
-        for (int i = 0; i < units.size(); i++) {
-            Unit unit = units.get(i);
-            Stmt stmt = (Stmt) unit;
-            
-            if (stmt instanceof AssignStmt) {
-                AssignStmt assign = (AssignStmt) stmt;
-                Value rightOp = assign.getRightOp();
-                Value leftOp = assign.getLeftOp();
+
+        if (stmt instanceof AssignStmt) {
+
+            AssignStmt assign = (AssignStmt) stmt;
+            Value rightOp = assign.getRightOp();
+            Value leftOp = assign.getLeftOp();
+
+            if (rightOp instanceof InstanceFieldRef) {
+
+                InstanceFieldRef fieldRef = (InstanceFieldRef) rightOp;
+                Value base = fieldRef.getBase();
+                SootField field = fieldRef.getField();
+
+                if (DEBUG) {
+                    System.out.println("FIELD LOAD DETECTED: " +
+                            base + "." + field.getName());
+                }
+
+                Set<FieldLoad> availableBefore =
+                        availableLoads.getFlowBefore(unit);
+
                 
-                // Check if right side is a field load
-                if (rightOp instanceof InstanceFieldRef) {
-                    InstanceFieldRef fieldRef = (InstanceFieldRef) rightOp;
-                    Value base = fieldRef.getBase();
-                    SootField field = fieldRef.getField();
-                    
-                    // Get available loads at this point
-                    Set<FieldLoad> availableBefore = availableLoads.getFlowBefore(unit);
-                    
-                    // Get points-to set for the base
-                    Set<String> basePointsTo = pointsTo.getPointsToSet(base, unit);
-                    
-                    // Check if this load is redundant
-                    for (FieldLoad availLoad : availableBefore) {
-                        Set<String> availBasePointsTo = pointsTo.getPointsToSet(availLoad.base, unit);
+                Set<String> currentFieldPts = pointsTo.getFieldPointsToSet(base, field, unit);
+
+                if (DEBUG) {
+                    System.out.println("Available Loads BEFORE:");
+                    for (FieldLoad fl : availableBefore) {
+                        System.out.println("   " + fl);
+                    }
+
+                    System.out.println("Current field Points-To: " + currentFieldPts);
+                }
+
+                for (FieldLoad availLoad : availableBefore) {
+
+                    Set<String> availFieldPts =
+                                        pointsTo.getFieldPointsToSet(
+                                            availLoad.base,
+                                            availLoad.field,
+                                            unit
+                                        );
+
+                    boolean sameBase =
+                            base.equals(availLoad.base);
+                    boolean sameField = field.getName().equals(availLoad.field.getName());
+
+                     // Compute intersection
+                    Set<String> intersection = new HashSet<>(currentFieldPts);
+                    intersection.retainAll(availFieldPts);
+
+                    boolean mayAlias =
+                            !intersection.isEmpty()
+                            ||
+                            (currentFieldPts.isEmpty()
+                             && availFieldPts.isEmpty()
+                             && sameBase && sameField);
+
+                    if (DEBUG) {
+                        System.out.println("\nComparing with: " + availLoad);
+                        System.out.println("   Avail Base  fields Points-To: "
+                                + availFieldPts);
+                        System.out.println("   sameBase: " + sameBase);
+                        System.out.println("   mayAlias: " + mayAlias);
+                    }
+
+                    if (mayAlias) {
                         
-                        // Check if bases may alias and fields match
-                        boolean sameBase = base.equals(availLoad.base);
-                        boolean mayAlias = !Collections.disjoint(basePointsTo, availBasePointsTo) || 
-                                          (basePointsTo.isEmpty() && availBasePointsTo.isEmpty() && sameBase);
-                        
-                        if ((sameBase || mayAlias)) {
-                            int lineNumber = stmt.getJavaSourceStartLineNumber();
-                            if (lineNumber <= 0) break;
-                            
-                            // Build the field reference string
-                            String fieldRefStr = base.toString() + ".<" + 
-                                field.getDeclaringClass().getName() + ": " + 
-                                field.getType() + " " + field.getName() + ">";
-                            
-                            // The replacement variable
-                            String replacementVar = availLoad.target.toString();
-                            
-                            // Check if this load is immediately used in a field write
-                            // If so, we might need to report the destination field instead
-                            String reportField = fieldRefStr;
-                            
-                            // Check if the next statement writes this value to a field
-                            if (leftOp instanceof Local && i + 1 < units.size()) {
-                                Unit nextUnit = units.get(i + 1);
-                                if (nextUnit instanceof AssignStmt) {
-                                    AssignStmt nextAssign = (AssignStmt) nextUnit;
-                                    if (nextAssign.getLeftOp() instanceof InstanceFieldRef &&
-                                        nextAssign.getRightOp().equals(leftOp)) {
-                                        // Pattern: temp = o.f; o2.g = temp;
-                                        // Report o2.g instead of o.f
-                                        InstanceFieldRef destField = (InstanceFieldRef) nextAssign.getLeftOp();
-                                        reportField = destField.getBase().toString() + ".<" +
-                                            destField.getField().getDeclaringClass().getName() + ": " +
-                                            destField.getField().getType() + " " +
-                                            destField.getField().getName() + ">";
-                                    }
-                                }
-                            }
-                            
-                            redundantLoads.add(new RedundantLoadInfo(
-                                lineNumber, reportField, replacementVar, replacementVar
-                            ));
-                            break;
+                        int lineNumber =
+                                stmt.getJavaSourceStartLineNumber();
+
+                        if (lineNumber <= 0) break;
+
+                        String fieldRefStr =
+                                base.toString() + ".<" +
+                                field.getDeclaringClass().getName() + ": " +
+                                field.getType() + " " +
+                                field.getName() + ">";
+
+                        String replacementVar =
+                                availLoad.target.toString();
+
+                        if (DEBUG) {
+                            System.out.println(">>> REDUNDANT LOAD FOUND!");
+                            System.out.println("    Replacing with: "
+                                    + replacementVar);
                         }
+
+                        redundantLoads.add(new RedundantLoadInfo(
+                                lineNumber,
+                                fieldRefStr,
+                                replacementVar,
+                                replacementVar
+                        ));
+
+                        break;
                     }
                 }
             }
         }
-        
-        // Sort by line number
-        Collections.sort(redundantLoads);
-        
-        return redundantLoads;
     }
+
+    Collections.sort(redundantLoads);
+
+    if (DEBUG) {
+        System.out.println("\n======= REDUNDANT LOAD SUMMARY =======");
+        for (RedundantLoadInfo info : redundantLoads) {
+            System.out.println(info);
+        }
+        System.out.println("======================================\n");
+    }
+
+    return redundantLoads;
+}
+
     
     private static boolean isFieldLoad(Stmt stmt) {
         if (stmt instanceof AssignStmt) {
@@ -302,7 +355,7 @@ class PointsToAnalysis extends ForwardFlowAnalysis<Unit, Map<Value, Set<String>>
             /* =============================
                1. x = new T()
                ============================= */
-            if (right instanceof NewExpr && left instanceof Local) {
+            if (right instanceof NewExpr) {
 
                 String allocSite = "O" + unit.getJavaSourceStartLineNumber();
 
@@ -375,16 +428,53 @@ class PointsToAnalysis extends ForwardFlowAnalysis<Unit, Map<Value, Set<String>>
                     heap.putIfAbsent(obj, new HashMap<>());
 
                     Map<String, Set<String>> fieldMap = heap.get(obj);
-                    fieldMap.putIfAbsent(fieldName, new HashSet<>());
-
-                    // Weak update (union)
-                    fieldMap.get(fieldName).addAll(rightPointsTo);
+                     if (baseObjects.size() == 1) {
+                            // 🔥 STRONG UPDATE
+                            fieldMap.put(fieldName, new HashSet<>(rightPointsTo));
+                        } else {
+                            // ⚠️ WEAK UPDATE
+                            fieldMap.putIfAbsent(fieldName, new HashSet<>());
+                            fieldMap.get(fieldName).addAll(rightPointsTo);
+                    }
                 }
             }
         }
+        
 
         // Store result for this unit
         unitToPointsTo.put(unit, deepCopy(out));
+        System.out.println("=================================================");
+        System.out.println("UNIT: " + unit);
+        System.out.println("Line: " + unit.getJavaSourceStartLineNumber());
+        System.out.println("-------------------------------------------------");
+
+        System.out.println("OUT (Variable -> Objects):");
+
+        for (Map.Entry<Value, Set<String>> entry : out.entrySet()) {
+            System.out.println("   " + entry.getKey() + " -> " + entry.getValue());
+        }
+
+        System.out.println();
+
+        System.out.println("HEAP (Object -> Field -> Objects):");
+
+        for (Map.Entry<String, Map<String, Set<String>>> objEntry : heap.entrySet()) {
+
+            String obj = objEntry.getKey();
+            System.out.println("   " + obj);
+
+            Map<String, Set<String>> fieldMap = objEntry.getValue();
+
+            for (Map.Entry<String, Set<String>> fieldEntry : fieldMap.entrySet()) {
+                System.out.println("      ." + fieldEntry.getKey()
+                        + " -> " + fieldEntry.getValue());
+            }
+        }
+
+        System.out.println("=================================================\n");
+
+
+
     }
     
     @Override
@@ -399,28 +489,29 @@ class PointsToAnalysis extends ForwardFlowAnalysis<Unit, Map<Value, Set<String>>
     
     @Override
     protected void merge(Map<Value, Set<String>> in1,
-                         Map<Value, Set<String>> in2,
-                         Map<Value, Set<String>> out) {
+                        Map<Value, Set<String>> in2,
+                        Map<Value, Set<String>> out) {
 
         out.clear();
 
+        // union of all variables
         Set<Value> allVars = new HashSet<>();
         allVars.addAll(in1.keySet());
         allVars.addAll(in2.keySet());
 
         for (Value var : allVars) {
 
-            Set<String> pointsTo = new HashSet<>();
+            Set<String> set1 = in1.getOrDefault(var, Collections.emptySet());
+            Set<String> set2 = in2.getOrDefault(var, Collections.emptySet());
 
-            if (in1.containsKey(var))
-                pointsTo.addAll(in1.get(var));
+            // INTERSECTION of object sets
+            Set<String> intersection = new HashSet<>(set1);
+            intersection.retainAll(set2);
 
-            if (in2.containsKey(var))
-                pointsTo.addAll(in2.get(var));
-
-            out.put(var, pointsTo);
+            out.put(var, intersection);
         }
     }
+
     
     @Override
     protected void copy(Map<Value, Set<String>> source,
@@ -449,6 +540,31 @@ class PointsToAnalysis extends ForwardFlowAnalysis<Unit, Map<Value, Set<String>>
         }
         return Collections.emptySet();
     }
+    public Set<String> getFieldPointsToSet(Value base,
+                                        SootField field,
+                                        Unit u) {
+
+        Set<String> result = new HashSet<>();
+
+        // Step 1: get objects base may point to
+        Set<String> baseObjects = getPointsToSet(base, u);
+
+        String fieldName = field.getName();
+
+        for (String obj : baseObjects) {
+
+            Map<String, Set<String>> fieldMap = heap.get(obj);
+            if (fieldMap == null) continue;
+
+            Set<String> targets = fieldMap.get(fieldName);
+            if (targets != null) {
+                result.addAll(targets);
+            }
+        }
+
+        return result;
+    }
+
 }
 
 
@@ -502,11 +618,31 @@ class AvailableLoadsAnalysis extends ForwardFlowAnalysis<Unit, Set<PA2.FieldLoad
                 out.add(newLoad);
             }
         }
-        
-        // Method calls kill all loads (conservative)
+            /* =============================
+        3️⃣ Method call kill
+        ============================= */
         if (stmt.containsInvokeExpr()) {
-            out.clear();
+
+            InvokeExpr invoke = stmt.getInvokeExpr();
+
+            Set<Value> objectsToKill = new HashSet<>();
+
+            // receiver
+            if (invoke instanceof InstanceInvokeExpr) {
+                objectsToKill.add(
+                    ((InstanceInvokeExpr) invoke).getBase()
+                );
+            }
+
+            // arguments
+            for (Value arg : invoke.getArgs()) {
+                objectsToKill.add(arg);
+            }
+
+            out.removeIf(load ->
+                    objectsToKill.contains(load.base));
         }
+
     }
     
     @Override

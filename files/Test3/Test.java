@@ -10,7 +10,7 @@ public class Test {
         if (cond) {
             x = a.f1;  // Load in then branch
         } else {
-            x = a.f1;  // Load in else branch
+            x = a.f2;  // Load in else branch
         }
         
         int y = a.f1;  // redundant (loaded on both paths)

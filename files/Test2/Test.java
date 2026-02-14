@@ -14,7 +14,7 @@ public class Test {
         Test o1 = new Test();
         int x;
         o1.f1 = 20;
-        Test o2 = o1;
+        Test o2 = new Test();
         x = o1.f1;
         int y = o2.f1; // redundant (o2 aliases o1)
     }
